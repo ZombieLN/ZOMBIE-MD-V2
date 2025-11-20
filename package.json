@@ -34,7 +34,7 @@
     "human-readable": "latest",
     "image-size": "latest",
     "javascript-obfuscator": "latest",
-    "jimp": "^0.16.1",
+    "jimp": "1.6.0",
     "link-preview-js": "latest",
     "megajs": "latest",
     "mongoose": "latest",
